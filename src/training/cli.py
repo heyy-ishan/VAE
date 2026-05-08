@@ -63,6 +63,7 @@ def _build_loader(dataset: Any, *, batch_size: int, num_workers: int, shuffle: b
 
 def run(cfg: DictConfig) -> float:
     """Library-style entrypoint — usable from tests without going through CLI."""
+    torch.set_float32_matmul_precision("high")
     seed = int(cfg.get("seed", 0))
     set_seeds(seed)
     pl.seed_everything(seed, workers=True)
@@ -87,6 +88,8 @@ def run(cfg: DictConfig) -> float:
     lit = hydra.utils.instantiate(cfg.lit, model=model)
 
     trainer_kwargs = OmegaConf.to_container(cfg.trainer, resolve=True)
+    if isinstance(trainer_kwargs.get("logger"), dict) and "_target_" in trainer_kwargs["logger"]:
+        trainer_kwargs["logger"] = hydra.utils.instantiate(cfg.trainer.logger)
     trainer = pl.Trainer(**trainer_kwargs)
 
     with BudgetTracker() as tracker:

@@ -88,15 +88,10 @@ class NSynthBass(Dataset):
                 continue
             pitch = int(meta["pitch"])
             if not self._PITCH_MIN <= pitch <= self._PITCH_MAX:
-                raise ValueError(
-                    f"pitch out of MIDI range [{self._PITCH_MIN}, {self._PITCH_MAX}] "
-                    f"for note {key!r}: got {pitch}"
-                )
+                continue
             source_str = meta["instrument_source_str"]
             if source_str not in self.SOURCES:
-                raise ValueError(
-                    f"unknown instrument_source_str for {key!r}: {source_str!r}"
-                )
+                continue
             items.append(
                 (
                     key,

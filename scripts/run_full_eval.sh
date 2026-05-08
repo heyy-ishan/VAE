@@ -33,7 +33,7 @@ for model in "${MODELS[@]}"; do
       model="${model}" \
       data="${DATASET}" \
       seed="${seed}" \
-      eval.out_json="${run_json}"
+      +eval.out_json="${run_json}"
   done
 done
 

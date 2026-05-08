@@ -58,6 +58,9 @@ class VAELitModule(pl.LightningModule):
         lambda_equi: float = 1.0,
         lambda_swap: float = 0.0,
         grad_clip_norm: float = 1.0,
+        beta_schedule: str = "constant",
+        n_cycles: int = 4,
+        beta_peak: float = 4.0,
     ) -> None:
         super().__init__()
         if lr <= 0:
@@ -71,6 +74,8 @@ class VAELitModule(pl.LightningModule):
                 f"warmup_steps must be in [0, total_steps], "
                 f"got warmup={warmup_steps}, total={total_steps}"
             )
+        if beta_schedule not in ("constant", "cyclical"):
+            raise ValueError(f"beta_schedule must be 'constant' or 'cyclical', got {beta_schedule!r}")
 
         self.model = model
 
@@ -88,9 +93,24 @@ class VAELitModule(pl.LightningModule):
         self._lambda_equi = lambda_equi
         self._lambda_swap = lambda_swap
         self._grad_clip_norm = grad_clip_norm
+        self._beta_schedule = beta_schedule
+        self._n_cycles = n_cycles
+        self._beta_peak = beta_peak
 
         # Lightning's hyperparameter logging — saves ctor args to checkpoint.
         self.save_hyperparameters(ignore=["model"])
+
+    def _effective_beta(self) -> float:
+        """Return current beta multiplier based on schedule and global step."""
+        if self._beta_schedule == "constant":
+            return 1.0
+        # Cyclical annealing: linearly ramp 0→1 within each cycle, then hold.
+        # Uses global_step; falls back to 1.0 before training starts.
+        step = self.global_step if self.global_step is not None else 0
+        cycle_len = max(1, self._total_steps // self._n_cycles)
+        pos = (step % cycle_len) / cycle_len
+        ramp = min(pos * 2.0, 1.0)  # first half of cycle ramps up, second holds
+        return ramp * self._beta_peak
 
     @property
     def config(self) -> dict:
@@ -121,6 +141,10 @@ class VAELitModule(pl.LightningModule):
         x_g = batch.get("x_g")
         g_cents = batch.get("g_cents")
 
+        scale = self._effective_beta()
+        eff_beta_s = self._beta_s * scale
+        eff_beta_c = self._beta_c * scale
+
         if isinstance(self.model, SCVAE):
             # Paired inputs enable full symmetry losses. Omitted inputs
             # collapse to recon + KL only (matches β-VAE step).
@@ -130,8 +154,8 @@ class VAELitModule(pl.LightningModule):
                     x,
                     x_g=x_g,
                     g_cents=g_cents,
-                    beta_s=self._beta_s,
-                    beta_c=self._beta_c,
+                    beta_s=eff_beta_s,
+                    beta_c=eff_beta_c,
                     tau_s=self._tau_s,
                     tau_c=self._tau_c,
                     lambda_inv=self._lambda_inv,
@@ -140,8 +164,8 @@ class VAELitModule(pl.LightningModule):
                 )
             return self.model.loss(
                 x,
-                beta_s=self._beta_s,
-                beta_c=self._beta_c,
+                beta_s=eff_beta_s,
+                beta_c=eff_beta_c,
                 tau_s=self._tau_s,
                 tau_c=self._tau_c,
             )
@@ -155,12 +179,12 @@ class VAELitModule(pl.LightningModule):
             # only the VAE loss and leave disc step to a dedicated
             # subclass (out of Task 4.1 scope — Phase-4 follow-up).
             total, parts, _z = self.model.loss_vae(
-                x, beta=self._beta_s, gamma=self._lambda_inv
+                x, beta=eff_beta_s, gamma=self._lambda_inv
             )
             return total, parts
 
         # β-VAE + β-TCVAE share the single-β loss signature.
-        return self.model.loss(x, beta=self._beta_s)
+        return self.model.loss(x, beta=eff_beta_s)
 
     # -- train / val steps ----------------------------------------------
 
@@ -170,6 +194,7 @@ class VAELitModule(pl.LightningModule):
             self.log("train/nan_skipped", 1.0, on_step=True)
             return None
         self.log("train/loss", total, prog_bar=True, on_step=True, on_epoch=True)
+        self.log("train/beta_scale", self._effective_beta(), on_step=True, on_epoch=False)
         for k, v in parts.items():
             self.log(f"train/{k}", v, on_step=True, on_epoch=True)
         return total

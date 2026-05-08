@@ -33,13 +33,13 @@ ABLATIONS_READY=(
   "rep_translation|model.rep_type=translation"
   "dims_swapped|model.d_s=16 model.d_c=64"
   "dims_unswapped|model.d_s=64 model.d_c=16"
-  "beta_const|lit.beta_schedule=constant lit.beta_s=4 lit.beta_c=4"
-  "beta_cyclical|lit.beta_schedule=cyclical lit.beta_s=4 lit.beta_c=4"
+  "beta_const|+lit.beta_schedule=constant lit.beta_s=4 lit.beta_c=4"
+  "beta_cyclical|+lit.beta_schedule=cyclical lit.beta_s=4 lit.beta_c=4"
   "beta_asym_high_c|lit.beta_s=1 lit.beta_c=8"
   "beta_asym_high_s|lit.beta_s=8 lit.beta_c=1"
-  "unpaired_batch|data.paired=false"
-  "aug_uniform_half|lit.g_cents_dist=uniform_half"
-  "aug_discrete|lit.g_cents_dist=discrete_semitones"
+  "unpaired_batch|+data.paired=false"
+  "aug_uniform_half|+lit.g_cents_dist=uniform_half"
+  "aug_discrete|+lit.g_cents_dist=discrete_semitones"
 )
 
 # PLANNED — require code not yet merged; tracked as TODO for Phase 7+.
@@ -71,7 +71,7 @@ run_one() {
   mkdir -p "${run_dir}"
   # shellcheck disable=SC2086
   python -m src.training.cli \
-    --config-name sweep \
+    --config-name base \
     model="${MODEL}" \
     data="${dataset}" \
     seed="${seed}" \

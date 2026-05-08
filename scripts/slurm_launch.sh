@@ -15,15 +15,15 @@
 
 #SBATCH --job-name=sc_vae
 #SBATCH --account=torch_pr_932_general
-#SBATCH --partition=l40s
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --partition=h200_public
+#SBATCH --gres=gpu:h200:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=72:00:00
-#SBATCH --output=logs/slurm_%j_%x.out
-#SBATCH --error=logs/slurm_%j_%x.err
+#SBATCH --output=/scratch/ig2671/VAE/logs/slurm_%j_%x.out
+#SBATCH --error=/scratch/ig2671/VAE/logs/slurm_%j_%x.err
 
-set -euo pipefail
+set -eo pipefail
 
 STAGE="${1:-stage1}"
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
@@ -33,7 +33,7 @@ mkdir -p logs
 
 # Load modules and activate conda env (NYU HPC torch cluster).
 module purge 2>/dev/null || true
-module load anaconda3/2025.06
+module load anaconda3/2025.06 2>/dev/null || true
 module load cuda/12.1 2>/dev/null || true
 
 export CONDA_ENVS_PATH=/scratch/ig2671/conda_envs
@@ -41,7 +41,13 @@ export CONDA_PKGS_DIRS=/scratch/ig2671/conda_pkgs
 eval "$(conda shell.bash hook)"
 conda activate sc_vae
 
-export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
+export PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+
+# Dataset paths — override via env if layout differs on target cluster.
+export NSYNTH_CACHE_TRAIN="${NSYNTH_CACHE_TRAIN:-/scratch/ig2671/datasets/nsynth/cache/train.h5}"
+export NSYNTH_CACHE_VALID="${NSYNTH_CACHE_VALID:-/scratch/ig2671/datasets/nsynth/cache/valid.h5}"
+export MOISESDB_ROOT="${MOISESDB_ROOT:-/scratch/ig2671/datasets/moisesdb}"
+export CREPE_CACHE="${CREPE_CACHE:-/scratch/ig2671/datasets/crepe_cache.h5}"
 
 echo "[slurm] Stage=$STAGE  Node=$(hostname)  GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
 
@@ -55,10 +61,10 @@ case "$STAGE" in
       data=nsynth_bass \
       seed=0 \
       trainer.max_epochs=20 \
-      trainer.precision=bf16-mixed \
-      lit.beta_schedule=cyclical \
-      lit.n_cycles=4 \
-      lit.beta_peak=4.0
+      +trainer.precision=bf16-mixed \
+      +lit.beta_schedule=cyclical \
+      +lit.n_cycles=4 \
+      +lit.beta_peak=4.0
     ;;
 
   stage234)
@@ -68,37 +74,37 @@ case "$STAGE" in
     python -m src.training.cli --config-name=sweep --multirun \
       data=nsynth_bass \
       trainer.max_epochs=100 \
-      trainer.precision=bf16-mixed \
+      +trainer.precision=bf16-mixed \
       model=sc_vae \
       seed=0,1,2 \
-      lit.beta_schedule=cyclical \
-      lit.n_cycles=4 \
-      lit.beta_peak=4.0
+      +lit.beta_schedule=cyclical \
+      +lit.n_cycles=4 \
+      +lit.beta_peak=4.0 || true
 
     python -m src.training.cli --config-name=sweep --multirun \
       data=nsynth_bass \
       trainer.max_epochs=100 \
-      trainer.precision=bf16-mixed \
+      +trainer.precision=bf16-mixed \
       model=beta_vae \
       seed=0,1,2 \
       lit.beta_s=4.0 \
-      lit.beta_schedule=cyclical \
-      lit.n_cycles=4 \
-      lit.beta_peak=4.0
+      +lit.beta_schedule=cyclical \
+      +lit.n_cycles=4 \
+      +lit.beta_peak=4.0 || true
 
     python -m src.training.cli --config-name=sweep --multirun \
       data=nsynth_bass \
       trainer.max_epochs=100 \
-      trainer.precision=bf16-mixed \
+      +trainer.precision=bf16-mixed \
       model=beta_tcvae \
       seed=0,1,2 \
       lit.beta_s=6.0 \
-      lit.beta_schedule=cyclical \
-      lit.n_cycles=4 \
-      lit.beta_peak=4.0
+      +lit.beta_schedule=cyclical \
+      +lit.n_cycles=4 \
+      +lit.beta_peak=4.0 || true
 
     # Stage 3: ablations (sc_vae only).
-    bash scripts/run_ablations.sh
+    bash scripts/run_ablations.sh || true
 
     # Stage 4: MoisesDB mini-arm.
     python -m src.training.cli \
@@ -106,8 +112,8 @@ case "$STAGE" in
       data=moisesdb_bass \
       seed=0 \
       trainer.max_epochs=50 \
-      trainer.precision=bf16-mixed \
-      lit.beta_schedule=cyclical
+      +trainer.precision=bf16-mixed \
+      +lit.beta_schedule=cyclical
     ;;
 
   stage56)

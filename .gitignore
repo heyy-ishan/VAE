@@ -13,3 +13,6 @@ outputs/
 run_manifest.json
 docs/training_plan.md
 docs/superpowers/
+/data/
+scripts/_check_pareto.py
+scripts/agg_tex_only.py

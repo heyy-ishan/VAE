@@ -1,0 +1,6 @@
+# Sweep config for --multirun runs (stage234, ablations).
+# Inherits everything from base.yaml; overrides only what sweeps need.
+
+defaults:
+  - base
+  - _self_

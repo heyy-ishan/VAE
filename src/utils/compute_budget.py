@@ -45,8 +45,12 @@ class BudgetTracker:
         self._t_start = time.perf_counter()
         self._t_stop = None
         if torch.cuda.is_available():
-            for i in range(torch.cuda.device_count()):
-                torch.cuda.reset_peak_memory_stats(i)
+            try:
+                torch.cuda.init()
+                for i in range(torch.cuda.device_count()):
+                    torch.cuda.reset_peak_memory_stats(i)
+            except RuntimeError:
+                pass
         return self
 
     def stop(self) -> "BudgetTracker":

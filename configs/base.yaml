@@ -33,7 +33,10 @@ trainer:
   max_epochs: 1
   accelerator: auto
   devices: auto
-  logger: false
+  logger:
+    _target_: pytorch_lightning.loggers.CSVLogger
+    save_dir: ${hydra:runtime.cwd}/runs
+    name: ${hydra:job.override_dirname}
   enable_progress_bar: false
-  enable_checkpointing: false
+  enable_checkpointing: true
   gradient_clip_val: 1.0
